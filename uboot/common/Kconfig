@@ -1,0 +1,913 @@
+menu "Boot timing"
+
+config BOOTSTAGE
+	bool "Boot timing and reporting"
+	help
+	  Enable recording of boot time while booting. To use it, insert
+	  calls to bootstage_mark() with a suitable BOOTSTAGE_ID from
+	  bootstage.h. Only a single entry is recorded for each ID. You can
+	  give the entry a name with bootstage_mark_name(). You can also
+	  record elapsed time in a particular stage using bootstage_start()
+	  before starting and bootstage_accum() when finished. Bootstage will
+	  add up all the accumulated time and report it.
+
+	  Normally, IDs are defined in bootstage.h but a small number of
+	  additional 'user' IDs can be used by passing BOOTSTAGE_ID_ALLOC
+	  as the ID.
+
+	  Calls to show_boot_progress() will also result in log entries but
+	  these will not have names.
+
+config SPL_BOOTSTAGE
+	bool "Boot timing and reported in SPL"
+	depends on BOOTSTAGE
+	help
+	  Enable recording of boot time in SPL. To make this visible to U-Boot
+	  proper, enable BOOTSTAGE_STASH as well. This will stash the timing
+	  information when SPL finishes and load it when U-Boot proper starts
+	  up.
+
+config BOOTSTAGE_REPORT
+	bool "Display a detailed boot timing report before booting the OS"
+	depends on BOOTSTAGE
+	help
+	  Enable output of a boot time report just before the OS is booted.
+	  This shows how long it took U-Boot to go through each stage of the
+	  boot process. The report looks something like this:
+
+		Timer summary in microseconds:
+		       Mark    Elapsed  Stage
+			  0          0  reset
+		  3,575,678  3,575,678  board_init_f start
+		  3,575,695         17  arch_cpu_init A9
+		  3,575,777         82  arch_cpu_init done
+		  3,659,598     83,821  board_init_r start
+		  3,910,375    250,777  main_loop
+		 29,916,167 26,005,792  bootm_start
+		 30,361,327    445,160  start_kernel
+
+config BOOTSTAGE_USER_COUNT
+	int "Number of boot ID numbers available for user use"
+	default 20
+	help
+	  This is the number of available user bootstage records.
+	  Each time you call bootstage_mark(BOOTSTAGE_ID_ALLOC, ...)
+	  a new ID will be allocated from this stash. If you exceed
+	  the limit, recording will stop.
+
+config BOOTSTAGE_RECORD_COUNT
+	int "Number of boot stage records to store"
+	default 30
+	help
+	  This is the size of the bootstage record list and is the maximum
+	  number of bootstage records that can be recorded.
+
+config BOOTSTAGE_FDT
+	bool "Store boot timing information in the OS device tree"
+	depends on BOOTSTAGE
+	help
+	  Stash the bootstage information in the FDT. A root 'bootstage'
+	  node is created with each bootstage id as a child. Each child
+	  has a 'name' property and either 'mark' containing the
+	  mark time in microseconds, or 'accum' containing the
+	  accumulated time for that bootstage id in microseconds.
+	  For example:
+
+		bootstage {
+			154 {
+				name = "board_init_f";
+				mark = <3575678>;
+			};
+			170 {
+				name = "lcd";
+				accum = <33482>;
+			};
+		};
+
+	  Code in the Linux kernel can find this in /proc/devicetree.
+
+config BOOTSTAGE_STASH
+	bool "Stash the boot timing information in memory before booting OS"
+	depends on BOOTSTAGE
+	help
+	  Some OSes do not support device tree. Bootstage can instead write
+	  the boot timing information in a binary format at a given address.
+	  This happens through a call to bootstage_stash(), typically in
+	  the CPU's cleanup_before_linux() function. You can use the
+	  'bootstage stash' and 'bootstage unstash' commands to do this on
+	  the command line.
+
+config BOOTSTAGE_STASH_ADDR
+	hex "Address to stash boot timing information"
+	default 0
+	help
+	  Provide an address which will not be overwritten by the OS when it
+	  starts, so that it can read this information when ready.
+
+config BOOTSTAGE_STASH_SIZE
+	hex "Size of boot timing stash region"
+	default 0x1000
+	help
+	  This should be large enough to hold the bootstage stash. A value of
+	  4096 (4KiB) is normally plenty.
+
+endmenu
+
+menu "Boot media"
+
+config NOR_BOOT
+	bool "Support for booting from NOR flash"
+	depends on NOR
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via NOR.  In this case we will enable certain pinmux early
+	  as the ROM only partially sets up pinmux.  We also default to using
+	  NOR for environment.
+
+config NAND_BOOT
+	bool "Support for booting from NAND flash"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via NAND flash. This is not a must, some SoCs need this,
+	  some not.
+
+config ONENAND_BOOT
+	bool "Support for booting from ONENAND"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via ONENAND. This is not a must, some SoCs need this,
+	  some not.
+
+config QSPI_BOOT
+	bool "Support for booting from QSPI flash"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via QSPI flash. This is not a must, some SoCs need this,
+	  some not.
+
+config SATA_BOOT
+	bool "Support for booting from SATA"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via SATA. This is not a must, some SoCs need this,
+	  some not.
+
+config SD_BOOT
+	bool "Support for booting from SD/EMMC"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via SD/EMMC. This is not a must, some SoCs need this,
+	  some not.
+
+config SPI_BOOT
+	bool "Support for booting from SPI flash"
+	default n
+	help
+	  Enabling this will make a U-Boot binary that is capable of being
+	  booted via SPI flash. This is not a must, some SoCs need this,
+	  some not.
+
+endmenu
+
+menu "Environment"
+
+config ENV_IS_IN_DATAFLASH
+	bool "Environment in dataflash"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have a DataFlash memory device which you
+	  want to use for the environment.
+
+	  - CONFIG_ENV_OFFSET:
+	  - CONFIG_ENV_ADDR:
+	  - CONFIG_ENV_SIZE:
+
+	  These three #defines specify the offset and size of the
+	  environment area within the total memory of your DataFlash placed
+	  at the specified address.
+
+config ENV_IS_IN_EEPROM
+	bool "Environment in EEPROM"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Use this if you have an EEPROM or similar serial access
+	  device and a driver for it.
+
+	  - CONFIG_ENV_OFFSET:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines specify the offset and size of the
+	  environment area within the total memory of your EEPROM.
+
+	  - CONFIG_SYS_I2C_EEPROM_ADDR:
+	  If defined, specified the chip address of the EEPROM device.
+	  The default address is zero.
+
+	  - CONFIG_SYS_I2C_EEPROM_BUS:
+	  If defined, specified the i2c bus of the EEPROM device.
+
+	  - CONFIG_SYS_EEPROM_PAGE_WRITE_BITS:
+	  If defined, the number of bits used to address bytes in a
+	  single page in the EEPROM device.  A 64 byte page, for example
+	  would require six bits.
+
+	  - CONFIG_SYS_EEPROM_PAGE_WRITE_DELAY_MS:
+	  If defined, the number of milliseconds to delay between
+	  page writes.	The default is zero milliseconds.
+
+	  - CONFIG_SYS_I2C_EEPROM_ADDR_LEN:
+	  The length in bytes of the EEPROM memory array address.  Note
+	  that this is NOT the chip address length!
+
+	  - CONFIG_SYS_I2C_EEPROM_ADDR_OVERFLOW:
+	  EEPROM chips that implement "address overflow" are ones
+	  like Catalyst 24WC04/08/16 which has 9/10/11 bits of
+	  address and the extra bits end up in the "chip address" bit
+	  slots. This makes a 24WC08 (1Kbyte) chip look like four 256
+	  byte chips.
+
+	  Note that we consider the length of the address field to
+	  still be one byte because the extra address bits are hidden
+	  in the chip address.
+
+	  - CONFIG_SYS_EEPROM_SIZE:
+	  The size in bytes of the EEPROM device.
+
+	  - CONFIG_ENV_EEPROM_IS_ON_I2C
+	  define this, if you have I2C and SPI activated, and your
+	  EEPROM, which holds the environment, is on the I2C bus.
+
+	  - CONFIG_I2C_ENV_EEPROM_BUS
+	  if you have an Environment on an EEPROM reached over
+	  I2C muxes, you can define here, how to reach this
+	  EEPROM. For example:
+
+	  #define CONFIG_I2C_ENV_EEPROM_BUS	  1
+
+	  EEPROM which holds the environment, is reached over
+	  a pca9547 i2c mux with address 0x70, channel 3.
+
+config ENV_IS_IN_FAT
+	bool "Environment is in a FAT filesystem"
+	depends on !CHAIN_OF_TRUST
+	select FAT_WRITE
+	help
+         Define this if you want to use the FAT file system for the environment.
+
+
+         - CONFIG_FAT_WRITE:
+         This must be enabled. Otherwise it cannot save the environment file.
+
+config ENV_IS_IN_FLASH
+	bool "Environment in flash memory"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have a flash device which you want to use for the
+	  environment.
+
+	  a) The environment occupies one whole flash sector, which is
+	   "embedded" in the text segment with the U-Boot code. This
+	   happens usually with "bottom boot sector" or "top boot
+	   sector" type flash chips, which have several smaller
+	   sectors at the start or the end. For instance, such a
+	   layout can have sector sizes of 8, 2x4, 16, Nx32 kB. In
+	   such a case you would place the environment in one of the
+	   4 kB sectors - with U-Boot code before and after it. With
+	   "top boot sector" type flash chips, you would put the
+	   environment in one of the last sectors, leaving a gap
+	   between U-Boot and the environment.
+
+	  CONFIG_ENV_OFFSET:
+
+	   Offset of environment data (variable area) to the
+	   beginning of flash memory; for instance, with bottom boot
+	   type flash chips the second sector can be used: the offset
+	   for this sector is given here.
+
+	   CONFIG_ENV_OFFSET is used relative to CONFIG_SYS_FLASH_BASE.
+
+	  CONFIG_ENV_ADDR:
+
+	   This is just another way to specify the start address of
+	   the flash sector containing the environment (instead of
+	   CONFIG_ENV_OFFSET).
+
+	  CONFIG_ENV_SECT_SIZE:
+
+	   Size of the sector containing the environment.
+
+
+	  b) Sometimes flash chips have few, equal sized, BIG sectors.
+	   In such a case you don't want to spend a whole sector for
+	   the environment.
+
+	  CONFIG_ENV_SIZE:
+
+	   If you use this in combination with CONFIG_ENV_IS_IN_FLASH
+	   and CONFIG_ENV_SECT_SIZE, you can specify to use only a part
+	   of this flash sector for the environment. This saves
+	   memory for the RAM copy of the environment.
+
+	   It may also save flash memory if you decide to use this
+	   when your environment is "embedded" within U-Boot code,
+	   since then the remainder of the flash sector could be used
+	   for U-Boot code. It should be pointed out that this is
+	   STRONGLY DISCOURAGED from a robustness point of view:
+	   updating the environment in flash makes it always
+	   necessary to erase the WHOLE sector. If something goes
+	   wrong before the contents has been restored from a copy in
+	   RAM, your target system will be dead.
+
+	  CONFIG_ENV_ADDR_REDUND
+	  CONFIG_ENV_SIZE_REDUND
+
+	   These settings describe a second storage area used to hold
+	   a redundant copy of the environment data, so that there is
+	   a valid backup copy in case there is a power failure during
+	   a "saveenv" operation.
+
+	  BE CAREFUL! Any changes to the flash layout, and some changes to the
+	  source code will make it necessary to adapt <board>/u-boot.lds*
+	  accordingly!
+
+config ENV_IS_IN_MMC
+	bool "Environment in an MMC device"
+	depends on !CHAIN_OF_TRUST
+	default y if ARCH_SUNXI
+	help
+	  Define this if you have an MMC device which you want to use for the
+	  environment.
+
+	  CONFIG_SYS_MMC_ENV_DEV:
+
+	  Specifies which MMC device the environment is stored in.
+
+	  CONFIG_SYS_MMC_ENV_PART (optional):
+
+	  Specifies which MMC partition the environment is stored in. If not
+	  set, defaults to partition 0, the user area. Common values might be
+	  1 (first MMC boot partition), 2 (second MMC boot partition).
+
+	  CONFIG_ENV_OFFSET:
+	  CONFIG_ENV_SIZE:
+
+	  These two #defines specify the offset and size of the environment
+	  area within the specified MMC device.
+
+	  If offset is positive (the usual case), it is treated as relative to
+	  the start of the MMC partition. If offset is negative, it is treated
+	  as relative to the end of the MMC partition. This can be useful if
+	  your board may be fitted with different MMC devices, which have
+	  different sizes for the MMC partitions, and you always want the
+	  environment placed at the very end of the partition, to leave the
+	  maximum possible space before it, to store other data.
+
+	  These two values are in units of bytes, but must be aligned to an
+	  MMC sector boundary.
+
+	  CONFIG_ENV_OFFSET_REDUND (optional):
+
+	  Specifies a second storage area, of CONFIG_ENV_SIZE size, used to
+	  hold a redundant copy of the environment data. This provides a
+	  valid backup copy in case the other copy is corrupted, e.g. due
+	  to a power failure during a "saveenv" operation.
+
+	  This value may also be positive or negative; this is handled in the
+	  same way as CONFIG_ENV_OFFSET.
+
+	  This value is also in units of bytes, but must also be aligned to
+	  an MMC sector boundary.
+
+	  CONFIG_ENV_SIZE_REDUND (optional):
+
+	  This value need not be set, even when CONFIG_ENV_OFFSET_REDUND is
+	  set. If this value is set, it must be set to the same value as
+	  CONFIG_ENV_SIZE.
+
+config ENV_IS_IN_NAND
+	bool "Environment in a NAND device"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have a NAND device which you want to use for the
+	  environment.
+
+	  - CONFIG_ENV_OFFSET:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines specify the offset and size of the environment
+	  area within the first NAND device.  CONFIG_ENV_OFFSET must be
+	  aligned to an erase block boundary.
+
+	  - CONFIG_ENV_OFFSET_REDUND (optional):
+
+	  This setting describes a second storage area of CONFIG_ENV_SIZE
+	  size used to hold a redundant copy of the environment data, so
+	  that there is a valid backup copy in case there is a power failure
+	  during a "saveenv" operation.	 CONFIG_ENV_OFFSET_REDUND must be
+	  aligned to an erase block boundary.
+
+	  - CONFIG_ENV_RANGE (optional):
+
+	  Specifies the length of the region in which the environment
+	  can be written.  This should be a multiple of the NAND device's
+	  block size.  Specifying a range with more erase blocks than
+	  are needed to hold CONFIG_ENV_SIZE allows bad blocks within
+	  the range to be avoided.
+
+	  - CONFIG_ENV_OFFSET_OOB (optional):
+
+	  Enables support for dynamically retrieving the offset of the
+	  environment from block zero's out-of-band data.  The
+	  "nand env.oob" command can be used to record this offset.
+	  Currently, CONFIG_ENV_OFFSET_REDUND is not supported when
+	  using CONFIG_ENV_OFFSET_OOB.
+
+config ENV_IS_IN_NVRAM
+	bool "Environment in a non-volatile RAM"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have some non-volatile memory device
+	  (NVRAM, battery buffered SRAM) which you want to use for the
+	  environment.
+
+	  - CONFIG_ENV_ADDR:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines are used to determine the memory area you
+	  want to use for environment. It is assumed that this memory
+	  can just be read and written to, without any special
+	  provision.
+
+config ENV_IS_IN_ONENAND
+	bool "Environment is in OneNAND"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you want to put your local device's environment in
+	  OneNAND.
+
+	  - CONFIG_ENV_ADDR:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines are used to determine the device range you
+	  want to use for environment. It is assumed that this memory
+	  can just be read and written to, without any special
+	  provision.
+
+config ENV_IS_IN_REMOTE
+	bool "Environment is in remove memory space"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have a remote memory space which you
+	  want to use for the local device's environment.
+
+	  - CONFIG_ENV_ADDR:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines specify the address and size of the
+	  environment area within the remote memory space. The
+	  local device can get the environment from remote memory
+	  space by SRIO or PCIE links.
+
+config ENV_IS_IN_SPI_FLASH
+	bool "Environment is in SPI flash"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have a SPI Flash memory device which you
+	  want to use for the environment.
+
+	  - CONFIG_ENV_OFFSET:
+	  - CONFIG_ENV_SIZE:
+
+	  These two #defines specify the offset and size of the
+	  environment area within the SPI Flash. CONFIG_ENV_OFFSET must be
+	  aligned to an erase sector boundary.
+
+	  - CONFIG_ENV_SECT_SIZE:
+
+	  Define the SPI flash's sector size.
+
+	  - CONFIG_ENV_OFFSET_REDUND (optional):
+
+	  This setting describes a second storage area of CONFIG_ENV_SIZE
+	  size used to hold a redundant copy of the environment data, so
+	  that there is a valid backup copy in case there is a power failure
+	  during a "saveenv" operation. CONFIG_ENV_OFFSET_REDUND must be
+	  aligned to an erase sector boundary.
+
+	  - CONFIG_ENV_SPI_BUS (optional):
+	  - CONFIG_ENV_SPI_CS (optional):
+
+	  Define the SPI bus and chip select. If not defined they will be 0.
+
+	  - CONFIG_ENV_SPI_MAX_HZ (optional):
+
+	  Define the SPI max work clock. If not defined then use 1MHz.
+
+	  - CONFIG_ENV_SPI_MODE (optional):
+
+	  Define the SPI work mode. If not defined then use SPI_MODE_3.
+
+config ENV_IS_IN_UBI
+	bool "Environment in a UBI volume"
+	depends on !CHAIN_OF_TRUST
+	help
+	  Define this if you have an UBI volume that you want to use for the
+	  environment.  This has the benefit of wear-leveling the environment
+	  accesses, which is important on NAND.
+
+	  - CONFIG_ENV_UBI_PART:
+
+	  Define this to a string that is the mtd partition containing the UBI.
+
+	  - CONFIG_ENV_UBI_VOLUME:
+
+	  Define this to the name of the volume that you want to store the
+	  environment in.
+
+	  - CONFIG_ENV_UBI_VOLUME_REDUND:
+
+	  Define this to the name of another volume to store a second copy of
+	  the environment in.  This will enable redundant environments in UBI.
+	  It is assumed that both volumes are in the same MTD partition.
+
+	  - CONFIG_UBI_SILENCE_MSG
+	  - CONFIG_UBIFS_SILENCE_MSG
+
+	  You will probably want to define these to avoid a really noisy system
+	  when storing the env in UBI.
+
+config ENV_IS_NOWHERE
+	bool "Environment is not stored"
+	help
+	  Define this if you don't want to or can't have an environment stored
+	  on a storage medium
+
+config ENV_FAT_INTERFACE
+	string "Name of the block device for the environment"
+	depends on ENV_IS_IN_FAT
+	default "mmc" if TI_COMMON_CMD_OPTIONS || ARCH_ZYNQMP || ARCH_AT91
+	help
+	  Define this to a string that is the name of the block device.
+
+config ENV_FAT_DEVICE_AND_PART
+	string "Device and partition for where to store the environemt in FAT"
+	depends on ENV_IS_IN_FAT
+	default "0:1" if TI_COMMON_CMD_OPTIONS
+	default "0:auto" if ARCH_ZYNQMP
+	default "0" if ARCH_AT91
+	help
+	  Define this to a string to specify the partition of the device. It can
+	  be as following:
+
+	    "D:P", "D:0", "D", "D:" or "D:auto" (D, P are integers. And P >= 1)
+	       - "D:P": device D partition P. Error occurs if device D has no
+	                partition table.
+	       - "D:0": device D.
+	       - "D" or "D:": device D partition 1 if device D has partition
+	                      table, or the whole device D if has no partition
+	                      table.
+	       - "D:auto": first partition in device D with bootable flag set.
+	                   If none, first valid partition in device D. If no
+	                   partition table then means device D.
+
+config ENV_FAT_FILE
+	string "Name of the FAT file to use for the environemnt"
+	depends on ENV_IS_IN_FAT
+	default "uboot.env"
+	help
+	  It's a string of the FAT file name. This file use to store the
+	  environment.
+
+if ARCH_SUNXI
+
+config ENV_OFFSET
+	hex "Environment Offset"
+	depends on !ENV_IS_IN_UBI
+	depends on !ENV_IS_NOWHERE
+	default 0x88000 if ARCH_SUNXI
+	help
+	  Offset from the start of the device (or partition)
+
+config ENV_SIZE
+	hex "Environment Size"
+	depends on !ENV_IS_NOWHERE
+	default 0x20000 if ARCH_SUNXI
+	help
+	  Size of the environment storage area
+
+config ENV_UBI_PART
+	string "UBI partition name"
+	depends on ENV_IS_IN_UBI
+	help
+	  MTD partition containing the UBI device
+
+config ENV_UBI_VOLUME
+	string "UBI volume name"
+	depends on ENV_IS_IN_UBI
+	help
+	  Name of the volume that you want to store the environment in.
+
+endif
+
+endmenu
+
+config BOOTDELAY
+	int "delay in seconds before automatically booting"
+	default 2
+	depends on AUTOBOOT
+	help
+	  Delay before automatically running bootcmd;
+	  set to 0 to autoboot with no delay, but you can stop it by key input.
+	  set to -1 to disable autoboot.
+	  set to -2 to autoboot with no delay and not check for abort
+
+	  See doc/README.autoboot for details.
+
+menu "Console"
+
+config MENU
+	bool
+	help
+	  This is the library functionality to provide a text-based menu of
+	  choices for the user to make choices with.
+
+config CONSOLE_RECORD
+	bool "Console recording"
+	help
+	  This provides a way to record console output (and provide console
+	  input) through circular buffers. This is mostly useful for testing.
+	  Console output is recorded even when the console is silent.
+	  To enable console recording, call console_record_reset_enable()
+	  from your code.
+
+config CONSOLE_RECORD_OUT_SIZE
+	hex "Output buffer size"
+	depends on CONSOLE_RECORD
+	default 0x400 if CONSOLE_RECORD
+	help
+	  Set the size of the console output buffer. When this fills up, no
+	  more data will be recorded until some is removed. The buffer is
+	  allocated immediately after the malloc() region is ready.
+
+config CONSOLE_RECORD_IN_SIZE
+	hex "Input buffer size"
+	depends on CONSOLE_RECORD
+	default 0x100 if CONSOLE_RECORD
+	help
+	  Set the size of the console input buffer. When this contains data,
+	  tstc() and getc() will use this in preference to real device input.
+	  The buffer is allocated immediately after the malloc() region is
+	  ready.
+
+config IDENT_STRING
+	string "Board specific string to be added to uboot version string"
+	help
+	  This options adds the board specific name to u-boot version.
+
+config SILENT_CONSOLE
+	bool "Support a silent console"
+	help
+	  This option allows the console to be silenced, meaning that no
+	  output will appear on the console devices. This is controlled by
+	  setting the environment vaariable 'silent' to a non-empty value.
+	  Note this also silences the console when booting Linux.
+
+	  When the console is set up, the variable is checked, and the
+	  GD_FLG_SILENT flag is set. Changing the environment variable later
+	  will update the flag.
+
+config SILENT_U_BOOT_ONLY
+	bool "Only silence the U-Boot console"
+	depends on SILENT_CONSOLE
+	help
+	  Normally when the U-Boot console is silenced, Linux's console is
+	  also silenced (assuming the board boots into Linux). This option
+	  allows the linux console to operate normally, even if U-Boot's
+	  is silenced.
+
+config SILENT_CONSOLE_UPDATE_ON_SET
+	bool "Changes to the 'silent' environment variable update immediately"
+	depends on SILENT_CONSOLE
+	default y if SILENT_CONSOLE
+	help
+	  When the 'silent' environment variable is changed, update the
+	  console silence flag immediately. This allows 'setenv' to be used
+	  to silence or un-silence the console.
+
+	  The effect is that any change to the variable will affect the
+	  GD_FLG_SILENT flag.
+
+config SILENT_CONSOLE_UPDATE_ON_RELOC
+	bool "Allow flags to take effect on relocation"
+	depends on SILENT_CONSOLE
+	help
+	  In some cases the environment is not available until relocation
+	  (e.g. NAND). This option makes the value of the 'silent'
+	  environment variable take effect at relocation.
+
+config PRE_CONSOLE_BUFFER
+	bool "Buffer characters before the console is available"
+	help
+	  Prior to the console being initialised (i.e. serial UART
+	  initialised etc) all console output is silently discarded.
+	  Defining CONFIG_PRE_CONSOLE_BUFFER will cause U-Boot to
+	  buffer any console messages prior to the console being
+	  initialised to a buffer. The buffer is a circular buffer, so
+	  if it overflows, earlier output is discarded.
+
+	  Note that this is not currently supported in SPL. It would be
+	  useful to be able to share the pre-console buffer with SPL.
+
+config PRE_CON_BUF_SZ
+	int "Sets the size of the pre-console buffer"
+	depends on PRE_CONSOLE_BUFFER
+	default 4096
+	help
+	  The size of the pre-console buffer affects how much console output
+	  can be held before it overflows and starts discarding earlier
+	  output. Normally there is very little output at this early stage,
+	  unless debugging is enabled, so allow enough for ~10 lines of
+	  text.
+
+	  This is a useful feature if you are using a video console and
+	  want to see the full boot output on the console. Without this
+	  option only the post-relocation output will be displayed.
+
+config PRE_CON_BUF_ADDR
+	hex "Address of the pre-console buffer"
+	depends on PRE_CONSOLE_BUFFER
+	default 0x2f000000 if ARCH_SUNXI && MACH_SUN9I
+	default 0x4f000000 if ARCH_SUNXI && !MACH_SUN9I
+	help
+	  This sets the start address of the pre-console buffer. This must
+	  be in available memory and is accessed before relocation and
+	  possibly before DRAM is set up. Therefore choose an address
+	  carefully.
+
+	  We should consider removing this option and allocating the memory
+	  in board_init_f_init_reserve() instead.
+
+config CONSOLE_MUX
+	bool "Enable console multiplexing"
+	default y if DM_VIDEO || VIDEO || LCD
+	help
+	  This allows multiple devices to be used for each console 'file'.
+	  For example, stdout can be set to go to serial and video.
+	  Similarly, stdin can be set to come from serial and keyboard.
+	  Input can be provided from either source. Console multiplexing
+	  adds a small amount of size to U-Boot.  Changes to the environment
+	  variables stdout, stdin and stderr will take effect immediately.
+
+config SYS_CONSOLE_IS_IN_ENV
+	bool "Select console devices from the environment"
+	default y if CONSOLE_MUX
+	help
+	  This allows multiple input/output devices to be set at boot time.
+	  For example, if stdout is set to "serial,video" then output will
+	  be sent to both the serial and video devices on boot. The
+	  environment variables can be updated after boot to change the
+	  input/output devices.
+
+config SYS_CONSOLE_OVERWRITE_ROUTINE
+	bool "Allow board control over console overwriting"
+	help
+	  If this is enabled, and the board-specific function
+	  overwrite_console() returns 1, the stdin, stderr and stdout are
+	  switched to the serial port, else the settings in the environment
+	  are used. If this is not enabled, the console will not be switched
+	  to serial.
+
+config SYS_CONSOLE_ENV_OVERWRITE
+	bool "Update environment variables during console init"
+	help
+	  The console environment variables (stdout, stdin, stderr) can be
+	  used to determine the correct console devices on start-up. This
+	  option writes the console devices to these variables on console
+	  start-up (after relocation). This causes the environment to be
+	  updated to match the console devices actually chosen.
+
+config SYS_CONSOLE_INFO_QUIET
+	bool "Don't display the console devices on boot"
+	help
+	  Normally U-Boot displays the current settings for stdout, stdin
+	  and stderr on boot when the post-relocation console is set up.
+	  Enable this option to supress this output. It can be obtained by
+	  calling stdio_print_current_devices() from board code.
+
+config SYS_STDIO_DEREGISTER
+	bool "Allow deregistering stdio devices"
+	default y if USB_KEYBOARD
+	help
+	  Generally there is no need to deregister stdio devices since they
+	  are never deactivated. But if a stdio device is used which can be
+	  removed (for example a USB keyboard) then this option can be
+	  enabled to ensure this is handled correctly.
+
+endmenu
+
+config DTB_RESELECT
+	bool "Support swapping dtbs at a later point in boot"
+	depends on FIT_EMBED
+	help
+	  It is possible during initial boot you may need to use a generic
+	  dtb until you can fully determine the board your running on. This
+	  config allows boards to implement a function at a later point
+	  during boot to switch to the "correct" dtb.
+
+config FIT_EMBED
+	bool "Support a FIT image embedded in the U-boot image"
+	help
+	  This option provides hooks to allow U-boot to parse an
+	  appended FIT image and enable board specific code to then select
+	  the correct DTB to be used.
+
+config DEFAULT_FDT_FILE
+	string "Default fdt file"
+	help
+	  This option is used to set the default fdt file to boot OS.
+
+config VERSION_VARIABLE
+	bool "add U-Boot environment variable vers"
+	default n
+	help
+	  If this variable is defined, an environment variable
+	  named "ver" is created by U-Boot showing the U-Boot
+	  version as printed by the "version" command.
+	  Any change to this variable will be reverted at the
+	  next reset.
+
+config BOARD_LATE_INIT
+	bool
+	help
+	  Sometimes board require some initialization code that might
+	  require once the actual init done, example saving board specific env,
+	  boot-modes etc. which eventually done at late.
+
+	  So this config enable the late init code with the help of board_late_init
+	  function which should defined on respective boards.
+
+config DISPLAY_CPUINFO
+	bool "Display information about the CPU during start up"
+	default y if ARM || NIOS2 || X86 || XTENSA
+	help
+	  Display information about the CPU that U-Boot is running on
+	  when U-Boot starts up. The function print_cpuinfo() is called
+	  to do this.
+
+config DISPLAY_BOARDINFO
+	bool "Display information about the board during start up"
+	default y if ARM || M68K || MIPS || PPC || SANDBOX || XTENSA
+	help
+	  Display information about the board that U-Boot is running on
+	  when U-Boot starts up. The board function checkboard() is called
+	  to do this.
+
+menu "Start-up hooks"
+
+config ARCH_EARLY_INIT_R
+	bool "Call arch-specific init soon after relocation"
+	default y if X86
+	help
+	  With this option U-Boot will call arch_early_init_r() soon after
+	  relocation. Driver model is running by this point, and the cache
+	  is on. Note that board_early_init_r() is called first, if
+	  enabled. This can be used to set up architecture-specific devices.
+
+config ARCH_MISC_INIT
+	bool "Call arch-specific init after relocation, when console is ready"
+	help
+	  With this option U-Boot will call arch_misc_init() after
+	  relocation to allow miscellaneous arch-dependent initialisation
+	  to be performed. This function should be defined by the board
+	  and will be called after the console is set up, after relocaiton.
+
+config BOARD_EARLY_INIT_F
+	bool "Call board-specific init before relocation"
+	default y if X86
+	help
+	  Some boards need to perform initialisation as soon as possible
+	  after boot. With this option, U-Boot calls board_early_init_f()
+	  after driver model is ready in the pre-relocation init sequence.
+	  Note that the normal serial console is not yet set up, but the
+	  debug UART will be available if enabled.
+
+endmenu
+
+menu "Security support"
+
+config HASH
+	bool # "Support hashing API (SHA1, SHA256, etc.)"
+	help
+	  This provides a way to hash data in memory using various supported
+	  algorithms (such as SHA1, MD5, CRC32). The API is defined in hash.h
+	  and the algorithms it supports are defined in common/hash.c. See
+	  also CMD_HASH for command-line access.
+
+endmenu
+
+source "common/spl/Kconfig"

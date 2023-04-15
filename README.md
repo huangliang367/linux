@@ -1,2 +1,2 @@
 # linux
-Learning Linux
+Learning Linux & uboot.
