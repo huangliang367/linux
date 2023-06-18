@@ -9,10 +9,11 @@
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <linux/slab.h>
+#include <linux/semaphore.h>
 
 #define GLOBALMEM_SIZE  0x1000
 #define MEM_CLEAR       0x1
-#define GLOBALMEM_MAJOR 254
+#define GLOBALMEM_MAJOR 0 
 
 static int globalmem_major = GLOBALMEM_MAJOR;
 
@@ -20,6 +21,7 @@ struct globalmem_dev
 {
     struct cdev cdev;
     unsigned char mem[GLOBALMEM_SIZE];
+    struct semaphore sem;
 };
 
 struct globalmem_dev *globalmem_devp;
@@ -48,6 +50,10 @@ static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count,
             return count ? -ENXIO : 0;
     if (count > GLOBALMEM_SIZE - p)
         count = GLOBALMEM_SIZE - p;
+    
+    if (down_interruptible(&dev->sem)) {
+        return -ERESTARTSYS;
+    }
 
     if (copy_to_user(buf, (void *)(dev->mem + p), count))
         return -EFAULT;
@@ -56,6 +62,7 @@ static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count,
         ret = count;
         printk(KERN_INFO "read %d byte(s) from %d\n", (unsigned int)count, (unsigned int)p);
     }
+    up(&dev->sem);
 
     return ret;
 }
@@ -71,6 +78,10 @@ static ssize_t globalmem_write(struct file *filp, const char __user *buf, size_t
     if (count > GLOBALMEM_SIZE - p)
         count = GLOBALMEM_SIZE - p;
 
+    if (down_interruptible(&dev->sem)) {
+        return -ERESTARTSYS;
+    }
+
     if (copy_from_user(dev->mem + p, buf, count))
         return -EFAULT;
     else {
@@ -79,6 +90,8 @@ static ssize_t globalmem_write(struct file *filp, const char __user *buf, size_t
         printk(KERN_INFO "written %d byte(s) from %d\n", (unsigned int)count, (unsigned int)p);
     }
 
+    up(&dev->sem);
+    
     return ret;
 }
 
@@ -127,8 +140,14 @@ static long globalmem_ioctl(struct file *filp, unsigned int cmd, unsigned long a
     struct globalmem_dev *dev = filp->private_data;
     switch (cmd) {
     case MEM_CLEAR:
+        if (down_interruptible(&dev->sem)) {
+            return -ERESTARTSYS;
+        }
         memset(dev->mem, 0, GLOBALMEM_SIZE);
+        up(&dev->sem);
+
         printk(KERN_INFO "globalmem is set to zero\n");
+        
         break;
     default:
         return -EINVAL;
@@ -185,13 +204,14 @@ int globalmem_init(void)
 
     globalmem_setup_dev(&globalmem_devp[0], 0);
     globalmem_setup_dev(&globalmem_devp[1], 1);
-    goto success;
+    sema_init(&(globalmem_devp[0].sem), 1);
+    sema_init(&(globalmem_devp[1].sem), 1);
+    return 0;
 
 fail_malloc:
     unregister_chrdev_region(MKDEV(globalmem_major, 0), 1);
 
-success:
-    return 0;
+    return result;
 }
 
 void globalmem_exit(void)
