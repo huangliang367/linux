@@ -10,6 +10,8 @@
 #include <asm/io.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
+#include <linux/wait.h>
+#include <linux/sched/signal.h>
 
 #define GLOBALMEM_SIZE  0x1000
 #define MEM_CLEAR       0x1
@@ -22,6 +24,9 @@ struct globalmem_dev
     struct cdev cdev;
     unsigned char mem[GLOBALMEM_SIZE];
     struct semaphore sem;
+    unsigned int current_len;
+    wait_queue_head_t r_wait;
+    wait_queue_head_t w_wait;
 };
 
 struct globalmem_dev *globalmem_devp;
@@ -42,56 +47,103 @@ int globalmem_release(struct inode *inode, struct file *filp)
 
 static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos)
 {
-    unsigned long p = *ppos;
     int ret = 0;
     struct globalmem_dev *dev = filp->private_data;
+    DECLARE_WAITQUEUE(wait, current);
 
-    if (p >= GLOBALMEM_SIZE)
-            return count ? -ENXIO : 0;
-    if (count > GLOBALMEM_SIZE - p)
-        count = GLOBALMEM_SIZE - p;
-    
-    if (down_interruptible(&dev->sem)) {
-        return -ERESTARTSYS;
+    down(&dev->sem);
+    add_wait_queue(&dev->r_wait, &wait);
+
+    if (dev->current_len == 0) {
+        if (filp->f_flags & O_NONBLOCK) {
+            ret = -EAGAIN;
+            goto out;
+        }
+
+        __set_current_state(TASK_INTERRUPTIBLE);
+        up(&dev->sem);
+        schedule();
+        if (signal_pending(current)) {
+            ret = -ERESTARTSYS;
+            goto out2;
+        }
+
+        down(&dev->sem);
     }
 
-    if (copy_to_user(buf, (void *)(dev->mem + p), count))
-        return -EFAULT;
-    else {
-        *ppos += count;
+    if (count > dev->current_len)
+        count = dev->current_len;
+
+    if (copy_to_user(buf, (void *)(dev->mem), count)) {
+        ret =  -EFAULT;
+        goto out;
+    } else {
+        memcpy(dev->mem, dev->mem + count, dev->current_len - count);
+        dev->current_len -= count;
+        printk(KERN_INFO "read %d byte(s), current_len %d\n", (unsigned int)count, (unsigned int)dev->current_len);
+
+        wake_up_interruptible(&dev->w_wait);
+
         ret = count;
-        printk(KERN_INFO "read %d byte(s) from %d\n", (unsigned int)count, (unsigned int)p);
     }
+out:
     up(&dev->sem);
+out2:
+    remove_wait_queue(&dev->w_wait, &wait);
+
+    set_current_state(TASK_RUNNING);
 
     return ret;
 }
 
 static ssize_t globalmem_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos)
 {
-    unsigned long p = *ppos;
     int ret = 0;
     struct globalmem_dev *dev = filp->private_data;
-
-    if (p >= GLOBALMEM_SIZE)
-        return count ? -ENXIO : 0;
-    if (count > GLOBALMEM_SIZE - p)
-        count = GLOBALMEM_SIZE - p;
-
-    if (down_interruptible(&dev->sem)) {
-        return -ERESTARTSYS;
-    }
-
-    if (copy_from_user(dev->mem + p, buf, count))
-        return -EFAULT;
-    else {
-        *ppos += count;
-        ret = count;
-        printk(KERN_INFO "written %d byte(s) from %d\n", (unsigned int)count, (unsigned int)p);
-    }
-
-    up(&dev->sem);
+    DECLARE_WAITQUEUE(wait, current);
     
+    down(&dev->sem);
+    add_wait_queue(&dev->w_wait, &wait);
+
+    if (dev->current_len == GLOBALMEM_SIZE) {
+        if (filp->f_flags & O_NONBLOCK) {
+            ret = -EAGAIN;
+            goto out;
+        }
+
+        __set_current_state(TASK_INTERRUPTIBLE);
+        up(&dev->sem);
+        schedule();
+
+        if (signal_pending(current)) {
+            ret = -ERESTARTSYS;
+            goto out2;
+        }
+
+        down(&dev->sem);
+    }
+
+    if (count > GLOBALMEM_SIZE - dev->current_len) {
+        count = GLOBALMEM_SIZE - dev->current_len;
+    }
+
+    if (copy_from_user(dev->mem, buf, count)) {
+        ret = -EFAULT;
+        goto out;
+    } else {
+        dev->current_len += count;
+        printk(KERN_INFO "written %d byte(s), current_len %d\n", (unsigned int)count, (unsigned int)dev->current_len);
+        wake_up_interruptible(&dev->r_wait);
+
+        ret = count;
+    }
+out:
+    up(&dev->sem);
+out2:
+    remove_wait_queue(&dev->w_wait, &wait);
+   
+    set_current_state(TASK_RUNNING);
+
     return ret;
 }
 
@@ -204,8 +256,15 @@ int globalmem_init(void)
 
     globalmem_setup_dev(&globalmem_devp[0], 0);
     globalmem_setup_dev(&globalmem_devp[1], 1);
+    
     sema_init(&(globalmem_devp[0].sem), 1);
     sema_init(&(globalmem_devp[1].sem), 1);
+
+    init_waitqueue_head(&(globalmem_devp[0].r_wait));
+    init_waitqueue_head(&(globalmem_devp[0].w_wait));
+    init_waitqueue_head(&(globalmem_devp[1].r_wait));
+    init_waitqueue_head(&(globalmem_devp[1].w_wait));
+
     return 0;
 
 fail_malloc:
