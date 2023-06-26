@@ -12,6 +12,7 @@
 #include <linux/semaphore.h>
 #include <linux/wait.h>
 #include <linux/sched/signal.h>
+#include <linux/poll.h>
 
 #define GLOBALMEM_SIZE  0x1000
 #define MEM_CLEAR       0x1
@@ -207,6 +208,28 @@ static long globalmem_ioctl(struct file *filp, unsigned int cmd, unsigned long a
     return 0;
 }
 
+static unsigned int globalmem_poll(struct file *filp, poll_table *wait)
+{
+    unsigned int mask = 0;
+    struct globalmem_dev *dev = filp->private_data;
+
+    down(&dev->sem);
+    poll_wait(filp, &dev->r_wait, wait);
+    poll_wait(filp, &dev->w_wait, wait);
+
+    if (dev->current_len != 0) {
+        mask |= POLLIN | POLLRDNORM;
+    } 
+
+    if (dev->current_len != GLOBALMEM_SIZE) {
+        mask |= POLLOUT | POLLWRNORM;
+    }
+
+    up(&dev->sem);
+
+    return mask;
+}
+
 static const struct file_operations globalmem_fops = {
     .owner = THIS_MODULE,
     .llseek = globalmem_llseek,
@@ -215,6 +238,7 @@ static const struct file_operations globalmem_fops = {
     .unlocked_ioctl = globalmem_ioctl,
     .open = globalmem_open,
     .release = globalmem_release,
+    .poll = globalmem_poll,
 };
 
 static void globalmem_setup_dev(struct globalmem_dev *dev, int index)
