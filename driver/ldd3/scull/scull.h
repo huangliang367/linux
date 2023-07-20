@@ -3,6 +3,20 @@
 
 #include <linux/ioctl.h>
 
+#undef PEDBUG
+#ifdef SCULL_DEBUG
+#   ifdef __KERNEL__
+#       define PDEBUG(fmt, args...) printk(KERN_DEBUG "scull: " fmt, ## args)
+#   else
+#       define PDEBUG(fmt, args...) fprintf(stderr, fmt, ## args)
+#   endif
+#else
+#   define PDEBUG(fmt, args...)
+#endif
+
+#undef PDEBUGG
+#define PDEBUGG(fmt, args...)
+
 #ifndef SCULL_MAJOR
 #define SCULL_MAJOR 0
 #endif

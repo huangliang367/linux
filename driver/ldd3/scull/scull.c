@@ -98,7 +98,8 @@ ssize_t scull_read(struct file *filp, char __user *buff, size_t count, loff_t *f
         goto out;
     if (*f_pos + count > dev->size)
         count = dev->size - *f_pos;
-printk("read count = %d, f_pos = %d\n", count, *f_pos);
+
+    PDEBUG("read count = %d, f_pos = %d\n", (int)count, (int)*f_pos);
     
     item = (long)*f_pos / itemsize;
     rest = (long)*f_pos % itemsize;
@@ -119,7 +120,7 @@ printk("read count = %d, f_pos = %d\n", count, *f_pos);
     *f_pos += count;
     retval = count;
     
-    printk("after, f_pos = %d\n", *f_pos);
+    PDEBUG("after, f_pos = %d\n", (int)*f_pos);
 out:
     up(&dev->sem);
     return retval;
@@ -135,7 +136,7 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count, lof
     int item, s_pos, q_pos, rest;
     ssize_t retval = -ENOMEM;
 
-    printk("write count = %d\n", count);
+    PDEBUG("write count = %d\n", (int)count);
     if (down_interruptible(&dev->sem))
         return -ERESTARTSYS;
 
@@ -170,7 +171,7 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count, lof
     *f_pos += count;
     retval = count;
 
-    printk("write dev->size = %d, *f_pos = %d\n", dev->size, *f_pos);
+    PDEBUG("write dev->size = %d, *f_pos = %d\n", (int)dev->size, (int)*f_pos);
     if (dev->size < *f_pos)
         dev->size = *f_pos;
 out:
@@ -228,12 +229,10 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
 
     cdev_init(&dev->cdev, &scull_ops);
     dev->cdev.owner = THIS_MODULE;
-printk(KERN_ALERT "cdev.ops = %p\n", dev->cdev.ops);
     dev->cdev.ops = &scull_ops;
-printk(KERN_ALERT "cdev.ops = %p\n", dev->cdev.ops);
     err = cdev_add(&dev->cdev, devno, 1);
     if (err)
-        printk(KERN_NOTICE "Error %d adding scull%d", err, index);
+        PDEBUG("Error %d adding scull%d", err, index);
 }
 
 void scull_cleanup_module(void)
@@ -267,7 +266,7 @@ int scull_init_module(void)
     }
 
     if (result < 0) {
-        printk(KERN_WARNING "scull: can't get major %d\n", scull_major);
+        PDEBUG("scull: can't get major %d\n", (int)scull_major);
         return result;
     }
 
