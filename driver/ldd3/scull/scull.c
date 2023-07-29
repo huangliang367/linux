@@ -31,6 +31,81 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 struct scull_dev *scull_devices;
 
+#ifdef SCULL_DEBUG
+
+static void *scull_seq_start(struct seq_file *s, loff_t *pos)
+{
+    if (*pos >= scull_nr_devs)
+        return NULL;
+    return scull_devices + *pos;
+}
+
+static void *scull_seq_next(struct seq_file *s, void *v, loff_t *pos)
+{
+    (*pos)++;
+    if (*pos >= scull_nr_devs)
+        return NULL;
+    return scull_devices + *pos;
+}
+
+static void scull_seq_stop(struct seq_file *s, void *v)
+{
+    
+}
+
+static int scull_seq_show(struct seq_file *s, void *v)
+{
+    struct scull_dev *dev = (struct scull_dev *)v;
+    struct scull_qset *d;
+    int i;
+
+    if (down_interruptible(&dev->sem))
+        return -ERESTARTSYS;
+    seq_printf(s, "\nDevice %i: qset %i, q %i, sz %li\n",
+            (int)(dev - scull_devices), dev->qset, dev->quantum, dev->size);
+    for (d = dev->data; d; d = d->next) {
+        seq_printf(s, " item at %p, qset at %p\n", d, d->data);
+        if (d->data && !d->next)
+            for (i = 0; i < dev->qset; i++) {
+                if (d->data[i])
+                    seq_printf(s, "     % 4i: %8p\n", i, d->data[i]);
+            }
+    }
+    up(&dev->sem);
+    return 0;
+}
+
+static struct seq_operations scull_seq_ops = {
+    .start = scull_seq_start,
+    .next = scull_seq_next,
+    .stop = scull_seq_stop,
+    .show = scull_seq_show
+};
+
+static int scull_proc_open(struct inode *inode, struct file *file)
+{
+    return seq_open(file, &scull_seq_ops);
+}
+
+static struct file_operations scull_proc_ops = {
+    .owner = THIS_MODULE,
+    .open = scull_proc_open,
+    .read = seq_read,
+    .llseek = seq_lseek,
+    .release = seq_release
+};
+
+static void scull_create_proc(void)
+{
+    proc_create("scullseq", 0x0644, NULL, &scull_proc_ops);
+}
+
+static void scull_remove_proc(void)
+{
+    remove_proc_entry("scullseq", NULL);
+}
+#endif
+
 int scull_trim(struct scull_dev *dev)
 {
     struct scull_qset *next, *dptr;
@@ -196,10 +271,45 @@ int scull_open(struct inode *inode, struct file *filp)
     return 0;
 }
 
-int scull_ioctl(struct inode *inode, struct file *filp,
+long scull_ioctl(struct file *filp,
                  unsigned int cmd, unsigned long arg)
 {
-    return 0;
+    int err = 0;
+    long retval = 0;
+
+    if (_IOC_TYPE(cmd) != SCULL_IOC_MAGIC)
+        return -ENOTTY;
+    if (_IOC_NR(cmd) > SCULL_IOC_MAXNR)
+        return -ENOTTY;
+
+    if (_IOC_DIR(cmd) & _IOC_READ)
+        err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+    else if (_IOC_DIR(cmd) & _IOC_WRITE)
+        err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+    if (err)
+        return -EFAULT;
+
+    switch (cmd) {
+    case SCULL_IOCRESET:
+        scull_quantum = SCULL_QUANTUM;
+        scull_qset = SCULL_QSET;
+        printk("RESETED!\n");
+        break;
+    case SCULL_IOCSQUANTUM:
+        if (!capable(CAP_SYS_ADMIN))
+            return -EPERM;
+        retval = __get_user(scull_quantum, (int __user *)arg);
+        break;
+    case SCULL_IOCTQUANTUM:
+        if (!capable(CAP_SYS_ADMIN))
+            return -EPERM;
+        scull_quantum = arg;
+        break;
+    default:
+        return -ENOTTY;
+    }
+
+    return retval;
 }
 
 loff_t scull_llseek(struct file *filp, loff_t off, int whence)
@@ -217,7 +327,7 @@ struct file_operations scull_ops = {
     .llseek = scull_llseek,
     .read = scull_read,
     .write = scull_write,
-//    .ioctl = scull_ioctl,
+    .unlocked_ioctl = scull_ioctl,
     .open = scull_open,
     .release = scull_release,
 };
@@ -247,6 +357,10 @@ void scull_cleanup_module(void)
         }
         kfree(scull_devices);
     }
+
+#ifdef SCULL_DEBUG
+    scull_remove_proc();
+#endif
 
     unregister_chrdev_region(devno, scull_nr_devs);
 }
@@ -286,6 +400,10 @@ int scull_init_module(void)
 
     dev = MKDEV(scull_major, scull_minor + scull_nr_devs);
     
+#ifdef SCULL_DEBUG
+    scull_create_proc();
+#endif
+
     return 0;
 fail:
     scull_cleanup_module();

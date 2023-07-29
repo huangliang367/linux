@@ -1,0 +1,13 @@
+#ifndef _SCULL_H_
+#define _SCULL_H_
+
+#define SCULL_IOC_MAGIC     'k'
+
+#define SCULL_IOCRESET      _IO(SCULL_IOC_MAGIC, 0)
+#define SCULL_IOCSQUANTUM   _IOW(SCULL_IOC_MAGIC, 1, int)
+#define SCULL_IOCTQUANTUM   _IO(SCULL_IOC_MAGIC, 2)
+#define SCULL_IOCGQUANTUM   _IOR(SCULL_IOC_MAGIC, 3, int)
+#define SCULL_IOCXQUANTUM   _IOWR(SCULL_IOC_MAGIC, 4, int)
+
+#define SCULL_IOC_MAXNR     14
+#endif /* _SCULL_H_ */
