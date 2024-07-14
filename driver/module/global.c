@@ -10,6 +10,7 @@
 #include <asm/uaccess.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/semaphore.h>
 
 #define GLOBALMEM_SIZE 0x1000
 #define MEM_CLEAR 0x1
@@ -21,6 +22,7 @@ static int globalmem_major = GLOBALMEM_MAJOR;
 struct globalmem_dev {
     struct cdev cdev;
     unsigned char mem[GLOBALMEM_SIZE];
+    struct semaphore sem;
 };
 
 struct globalmem_dev *globalmem_devp;
@@ -38,14 +40,20 @@ static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count,
     if (count > GLOBALMEM_SIZE - p)
         count = GLOBALMEM_SIZE - p;
 
+    if (down_interruptible(&dev->sem)) {
+        return -ERESTARTSYS;
+    }
+
     if (copy_to_user(buf, (void *)(dev->mem + p), count)) {
         ret = - EFAULT;
     } else {
         *ppos += count;
         ret = count;
+        printk(KERN_INFO "read %ld byte(s) from %ld\n", count, p);
     }
 
-    printk(KERN_INFO "read %ld byte(s) from %ld\n", count, p);
+    up(&dev->sem);
+
     return ret;
 }
 
@@ -62,6 +70,10 @@ static ssize_t globalmem_write(struct file *filp, const char __user *buf, size_t
     if (count > GLOBALMEM_SIZE - p)
         count = GLOBALMEM_SIZE - p;
 
+    if (down_interruptible(&dev->sem)) {
+        return -ERESTARTSYS;
+    }
+
     if (copy_from_user((void *)(dev->mem + p), buf, count)) {
         ret = -EFAULT;
     } else {
@@ -69,6 +81,8 @@ static ssize_t globalmem_write(struct file *filp, const char __user *buf, size_t
         ret = count;
         printk(KERN_INFO "written %ld byte(s) from %ld\n", count, p);
     }
+
+    up(&dev->sem);
 
     return ret;
 }
@@ -140,6 +154,8 @@ int globalmem_init(void)
 
     globalmem_setup_cdev(&globalmem_devp[0], 0);
     globalmem_setup_cdev(&globalmem_devp[1], 1);
+    sema_init(&globalmem_devp[0].sem, 1);
+    sema_init(&globalmem_devp[1].sem, 1);
 
     return 0;
 
