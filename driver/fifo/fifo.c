@@ -27,9 +27,26 @@ struct globalmem_dev {
     struct semaphore sem;
     wait_queue_head_t r_wait;
     wait_queue_head_t w_wait;
+    struct fasync_struct *async_queue;
 };
 
 struct globalmem_dev *globalmem_devp;
+
+static int globalmem_fasync(int fd, struct file *filp, int mode)
+{
+    struct globalmem_dev *dev = filp->private_data;
+
+    return fasync_helper(fd, filp, mode, &dev->async_queue);
+}
+
+int globalmem_release(struct inode *inode, struct file *filp)
+{
+    struct globalmem_dev *dev = filp->private_data;
+
+    globalmem_fasync(-1, filp, 0);
+
+    return 0;
+}
 
 static unsigned int globalmem_poll(struct file *filp, poll_table *wait)
 {
@@ -93,6 +110,11 @@ static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count,
         dev->current_len -= count;
         printk(KERN_INFO "read %ld byte(s), current_len: %ud\n", count, dev->current_len);
         wake_up_interruptible(&dev->w_wait);
+
+        if (dev->async_queue) {
+            kill_fasync(&dev->async_queue, SIGIO, POLL_IN);    
+        }
+
         ret = count;
     }
 
