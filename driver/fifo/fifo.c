@@ -11,6 +11,7 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
+#include <linux/poll.h>
 
 #define GLOBALMEM_SIZE 0x1000
 #define MEM_CLEAR 0x1
@@ -29,6 +30,27 @@ struct globalmem_dev {
 };
 
 struct globalmem_dev *globalmem_devp;
+
+static unsigned int globalmem_poll(struct file *filp, poll_table *wait)
+{
+    unsigned int mask = 0;
+    struct globalmem_dev *dev = filp->private_data;
+
+    down(&dev->sem);
+    poll_wait(filp, &dev->r_wait, wait);
+    poll_wait(filp, &dev->w_wait, wait);
+
+    if (dev->current_len != 0) {
+        mask |= POLLIN | POLLRDNORM;
+    }
+
+    if (dev->current_len != GLOBALMEM_SIZE) {
+        mask |= POLLOUT | POLLWRNORM;
+    }
+
+    up(&dev->sem);
+    return mask;
+}
 
 static ssize_t globalmem_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos)
 {
@@ -150,6 +172,7 @@ static const struct file_operations globalmem_fops = {
     .read = globalmem_read,
     .write = globalmem_write,
     .open = globalmem_open,
+    .poll = globalmem_poll,
 };
 
 static void globalmem_setup_cdev(struct globalmem_dev *dev, int index)
